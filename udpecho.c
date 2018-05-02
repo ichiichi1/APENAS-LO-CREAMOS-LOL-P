@@ -72,9 +72,13 @@ void PIT0_IRQHandler(void) //Aquí falta ponerle un campo de bits para que despi
 	//BaseType_t xHigherPriorityTaskWoken; //agregado
 	//xHigherPriorityTaskWoken = pdFALSE;  //agregado
     PIT_ClearStatusFlags(PIT, kPIT_Chnl_0, kPIT_TimerFlag);
-   	y++;
    	DAC_SetBufferValue(DEMO_DAC_BASEADDR, 0U, (pong_buf[y] >> 4));
-    (y == 0)? y = 0: y = y;
+   	y++;
+   	if(y == 200)
+   	{
+   	y = 0;
+   	PIT_StopTimer(PIT, kPIT_Chnl_0);
+   	}
     //xSemaphoreGiveFromISR( g_led_semaphore, &xHigherPriorityTaskWoken ); //agregado
     //portYIELD_FROM_ISR( xHigherPriorityTaskWoken );
 }
