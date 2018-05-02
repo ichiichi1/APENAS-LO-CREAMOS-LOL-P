@@ -56,18 +56,27 @@ SemaphoreHandle_t g_led_semaphore;
 #define PIN17_IDX                       17u   /*!< Pin number for pin 17 in a port */
 #define SOPT5_UART0TXSRC_UART_TX      0x00u   /*!< UART 0 transmit data source select: UART0_TX pin */
 
+#define paquetes 200
+
 #define DEMO_DAC_BASEADDR DAC0
 volatile bool pitIsrFlag = false;
 uint32_t dacValue;
 
+uint16_t ping_buf[paquetes];
+uint16_t pong_buf[paquetes];
+uint8_t i =0;
+uint8_t y = 0;
+
 void PIT0_IRQHandler(void) //Aquí falta ponerle un campo de bits para que despierte a la tarea del dac
 {
-	BaseType_t xHigherPriorityTaskWoken; //agregado
-	xHigherPriorityTaskWoken = pdFALSE;  //agregado
+	//BaseType_t xHigherPriorityTaskWoken; //agregado
+	//xHigherPriorityTaskWoken = pdFALSE;  //agregado
     PIT_ClearStatusFlags(PIT, kPIT_Chnl_0, kPIT_TimerFlag);
-    pitIsrFlag = true;
-    xSemaphoreGiveFromISR( g_led_semaphore, &xHigherPriorityTaskWoken ); //agregado
-    portYIELD_FROM_ISR( xHigherPriorityTaskWoken );
+   	y++;
+   	DAC_SetBufferValue(DEMO_DAC_BASEADDR, 0U, (pong_buf[y] >> 4));
+    (y == 0)? y = 0: y = y;
+    //xSemaphoreGiveFromISR( g_led_semaphore, &xHigherPriorityTaskWoken ); //agregado
+    //portYIELD_FROM_ISR( xHigherPriorityTaskWoken );
 }
 
 void DAC_PIT_INIT(void)
@@ -96,7 +105,7 @@ void DAC_PIT_INIT(void)
 	pit_config_t pitConfig;
 	PIT_GetDefaultConfig(&pitConfig);
 	PIT_Init(PIT, &pitConfig);
-	PIT_SetTimerPeriod(PIT, kPIT_Chnl_0, CLOCK_GetBusClkFreq());
+	PIT_SetTimerPeriod(PIT, kPIT_Chnl_0, CLOCK_GetBusClkFreq()/20000);
 
 
 	PIT_EnableInterrupts(PIT, kPIT_Chnl_0, kPIT_TimerInterruptEnable);
@@ -104,7 +113,8 @@ void DAC_PIT_INIT(void)
 	NVIC_EnableIRQ(PIT0_IRQn);
 	NVIC_SetPriority(PIT0_IRQn,5);
 
-	PIT_StartTimer(PIT, kPIT_Chnl_0);
+	//aquí soliamos iniciar el timer
+
 	g_led_semaphore = xSemaphoreCreateBinary();
 
     /* Configure the DAC. */
@@ -122,25 +132,7 @@ void DAC_PIT_INIT(void)
                                                      */
 }
 
-static void dac_pit(void *arg) //Aquí falta ser despertado por el campo de bits
-{
- for(;;)
- {
-	          xSemaphoreTake(g_led_semaphore,portMAX_DELAY);
 
-             /*
-	         dacValue= dacValue+10;
-	         (dacValue > 4095)? dacValue = 0 : (dacValue = dacValue);
-	         DAC_SetBufferValue(DEMO_DAC_BASEADDR, 0U, dacValue);
-	         PRINTF("DAC out: %d\r\n", dacValue);
-	         pitIsrFlag = false; */
-             xSemaphoreGive(g_led_semaphore);
-             vTaskDelay(200);
-	         /*
-	         * The value in the first item would be converted. User can measure the output voltage from DAC_OUTx pin.
-	         */
-  }
- }
 
 ///////////////////////////////////////////////////////////////////////////////////////
 /*-----------------------------------------------------------------------------------*/
@@ -150,9 +142,9 @@ static void server_thread(void *arg)
 	struct netconn *conn;
 	struct netbuf *buf;
 
-	char *msg;
+//	char *msg;
 
-	uint16_t len;
+//	uint16_t len;
 
 	LWIP_UNUSED_ARG(arg);
 	conn = netconn_new(NETCONN_UDP);
@@ -163,9 +155,14 @@ static void server_thread(void *arg)
 	while (1)
 	{
 		netconn_recv(conn, &buf);
-		netbuf_data(buf, (void**)&msg, &len);
-		//netbuf_copy(buf,ping_buf,sizeof(ping_buf));
+		//netbuf_data(buf, (void**)&msg, &len);
+		netbuf_copy(buf,ping_buf,sizeof(ping_buf));
+		for(uint8_t i = 0;i<paquetes;i++)
+		{
+			pong_buf[i] = ping_buf[i];
+		}
 		netbuf_delete(buf);
+		PIT_StartTimer(PIT, kPIT_Chnl_0);
 
 	}
 }
@@ -231,7 +228,7 @@ void udpecho_init(void)
 
     sys_thread_new("server", server_thread, NULL, 300, 2);
     sys_thread_new("server1", server_thread1, NULL, 300, 2);
-    xTaskCreate(dac_pit, "WRITE_TASK_2", configMINIMAL_STACK_SIZE + 150, NULL, 4, NULL); //CREADA
+ //   xTaskCreate(dac_pit, "WRITE_TASK_2", configMINIMAL_STACK_SIZE + 150, NULL, 4, NULL); //CREADA
 }
 
 #endif /* LWIP_NETCONN */
